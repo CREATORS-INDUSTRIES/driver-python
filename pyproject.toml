@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "crtrs-driver"
+version = "0.1.0"
+description = "Python client for Driver API."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "CREATORS" }]
+keywords = ["driver", "agent", "ai", "sse", "cloud", "crtrs"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://creators.industries"
+Issues = "https://github.com/CREATORS-INDUSTRIES/driver-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crtrs"]
