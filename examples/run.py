@@ -2,6 +2,10 @@
 
     export DRIVER_API_KEY=dr_xxxxxxxx
     python examples/run.py "what is https://ycombinator.com about?"
+    python examples/run.py --zdr "summarize this confidential brief"
+
+--zdr runs with zero data retention (needs the account entitlement; the server
+answers 403 without it).
 
 Optional:
     export DRIVER_BASE_URL=https://driver.tors.app
@@ -19,14 +23,16 @@ def main() -> int:
         print("set DRIVER_API_KEY (dr_...) — get one from the dashboard", file=sys.stderr)
         return 2
 
-    prompt = " ".join(sys.argv[1:]) or "what is https://ycombinator.com about?"
+    args = sys.argv[1:]
+    zdr = "--zdr" in args
+    prompt = " ".join(a for a in args if a != "--zdr") or "what is https://ycombinator.com about?"
     driver = Driver()  # reads DRIVER_API_KEY / DRIVER_BASE_URL from env
     debug = bool(os.environ.get("DRIVER_DEBUG"))
 
-    print(f"prompt: {prompt}")
+    print(f"prompt: {prompt}{'  [zdr]' if zdr else ''}")
     done = None
     try:
-        for ev in driver.stream(prompt):
+        for ev in driver.stream(prompt, zdr=zdr):
             if debug:
                 print("RAW", ev, file=sys.stderr)
             kind = ev["kind"]

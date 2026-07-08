@@ -6,6 +6,11 @@ runs your function locally and POSTs the result back, then the run continues.
 
     export DRIVER_API_KEY=dr_xxxxxxxx
     python examples/weather_tool.py "what should I wear in Barcelona today?"
+    python examples/weather_tool.py --zdr "what should I wear in Barcelona today?"
+
+--zdr runs with zero data retention (needs the account entitlement; the server
+answers 403 without it). Client tools work exactly the same either way — the
+tool_request round trip is live streaming, not retention.
 
 Optional:
     export DRIVER_BASE_URL=https://driver.tors.app
@@ -39,7 +44,9 @@ def main() -> int:
         print("set DRIVER_API_KEY (dr_...) — get one from the dashboard", file=sys.stderr)
         return 2
 
-    prompt = " ".join(sys.argv[1:]) or "what should I wear in Barcelona today?"
+    args = sys.argv[1:]
+    zdr = "--zdr" in args
+    prompt = " ".join(a for a in args if a != "--zdr") or "what should I wear in Barcelona today?"
 
     weather = define_tool(
         name="get_weather",
@@ -54,10 +61,10 @@ def main() -> int:
     driver = Driver(tools=[weather])  # reads DRIVER_API_KEY / DRIVER_BASE_URL from env
     debug = bool(os.environ.get("DRIVER_DEBUG"))
 
-    print(f"prompt: {prompt}")
+    print(f"prompt: {prompt}{'  [zdr]' if zdr else ''}")
     done = None
     try:
-        for ev in driver.stream(prompt):
+        for ev in driver.stream(prompt, zdr=zdr):
             if debug:
                 print("RAW", ev, file=sys.stderr)
             kind = ev["kind"]

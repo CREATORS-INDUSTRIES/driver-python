@@ -41,7 +41,7 @@ __all__ = [
     "normalize_params",
     "PARAM_DESC_MAX",
 ]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 DEFAULT_BASE_URL = "https://driver.tors.app"
 RUN_PATH = "/api/driver/run"
@@ -67,6 +67,9 @@ class Driver:
     :param tools: default tools sent with every run; a per-call ``tools`` argument
         overrides this list for that call. Each may be a :class:`Tool` or a plain
         dict in the catalog shape.
+    :param zdr: request zero data retention for every run by default; a per-call
+        ``zdr`` argument overrides it. Needs the account entitlement — without it
+        the server rejects the run with 403.
     """
 
     def __init__(
@@ -75,6 +78,7 @@ class Driver:
         base_url: Optional[str] = None,
         timeout: Optional[float] = None,
         tools: Optional[Sequence[Union[Tool, Dict[str, Any]]]] = None,
+        zdr: Optional[bool] = None,
     ) -> None:
         key = api_key or os.environ.get("DRIVER_API_KEY")
         if not key:
@@ -85,22 +89,36 @@ class Driver:
         self.base_url = (base_url or os.environ.get("DRIVER_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
         self.tools = list(tools or [])
+        checked = _assert_zdr(zdr)
+        self.zdr = False if checked is None else checked
 
     def stream(
         self,
         prompt: str,
         tools: Optional[Sequence[Union[Tool, Dict[str, Any]]]] = None,
+        zdr: Optional[bool] = None,
     ) -> Iterator[Event]:
         """Run a prompt and yield each agent event as it arrives.
 
         Yields the five allowlisted event kinds. Raises :class:`DriverError` on a
         ``fatal`` event or a non-2xx response. ``tools`` overrides the constructor
         list for this run.
+
+        :param zdr: zero data retention for THIS run; overrides the constructor
+            default. The cloud stores nothing the execution sees (no prompt, no
+            event log, no outputs) — events stream here and die here. Requires
+            the account entitlement; without it the run fails with 403.
         """
         body: Dict[str, Any] = {"prompt": prompt}
         chosen = self.tools if tools is None else list(tools)
         if chosen:
             body["tools"] = [t.to_dict() if isinstance(t, Tool) else t for t in chosen]
+        # Explicit per-run choice wins over the constructor default, both ways:
+        # zdr=False on a zdr-by-default client forces a retained run.
+        checked = _assert_zdr(zdr)
+        effective_zdr = self.zdr if checked is None else checked
+        if effective_zdr:
+            body["zdr"] = True
         req = urllib.request.Request(
             self.base_url + RUN_PATH,
             data=json.dumps(body).encode("utf-8"),
@@ -210,21 +228,54 @@ class Driver:
         prompt: str,
         on_event: Optional[Callable[[Event], None]] = None,
         tools: Optional[Sequence[Union[Tool, Dict[str, Any]]]] = None,
+        zdr: Optional[bool] = None,
     ) -> Optional[Event]:
         """Run a prompt to completion.
 
         :param on_event: optional callback invoked for every event.
         :param tools: overrides the constructor tools for this run.
+        :param zdr: zero data retention for this run; overrides the constructor
+            default. Requires the account entitlement (403 otherwise).
         :returns: the final ``done`` event, or ``None`` if the stream ended
             without one.
         """
         done: Optional[Event] = None
-        for ev in self.stream(prompt, tools=tools):
+        for ev in self.stream(prompt, tools=tools, zdr=zdr):
             if on_event is not None:
                 on_event(ev)
             if ev["kind"] == "done":
                 done = ev
         return done
+
+    def run_zdr(
+        self,
+        prompt: str,
+        on_event: Optional[Callable[[Event], None]] = None,
+        tools: Optional[Sequence[Union[Tool, Dict[str, Any]]]] = None,
+    ) -> Optional[Event]:
+        """Run a prompt with zero data retention.
+
+        Sugar for ``run(prompt, zdr=True)``: same streaming, same tools, same
+        return — the cloud just never writes the run down. Requires the account
+        entitlement (403 otherwise).
+        """
+        return self.run(prompt, on_event=on_event, tools=tools, zdr=True)
+
+
+def _assert_zdr(value: Any) -> Optional[bool]:
+    """Validate a ``zdr`` argument: strictly bool or ``None``, no coercion.
+
+    A truthy string like ``"false"`` silently ENABLING retention semantics the
+    caller did not ask for is exactly the surprise this guards against — fail
+    loud instead. Returns the bool, or ``None`` when not provided.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise TypeError(
+            f"Driver: zdr must be a bool, got {type(value).__name__} ({value!r})"
+        )
+    return value
 
 
 def _resolve_localhost(base_url: str) -> "tuple[str, Optional[str]]":
