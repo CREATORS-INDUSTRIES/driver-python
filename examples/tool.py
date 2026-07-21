@@ -58,7 +58,12 @@ def main() -> int:
         call=get_weather,
     )
 
-    driver = Driver(tools=[weather])  # reads DRIVER_API_KEY / DRIVER_BASE_URL from env
+    driver = Driver(  # reads DRIVER_API_KEY / DRIVER_BASE_URL from env
+        tools=[weather],
+        engine=os.environ.get("DRIVER_LLM_ENGINE"),
+        model=os.environ.get("DRIVER_LLM_MODEL"),
+        engine_key=os.environ.get("DRIVER_LLM_API_KEY"),
+    )
     debug = bool(os.environ.get("DRIVER_DEBUG"))
 
     print(f"prompt: {prompt}{'  [zdr]' if zdr else ''}")

@@ -10,6 +10,11 @@ answers 403 without it).
 Optional:
     export DRIVER_BASE_URL=https://driver.tors.app
     export DRIVER_DEBUG=1   # dump raw events
+
+Bring-your-own engine (all three optional; omit to use the cloud default):
+    export DRIVER_LLM_ENGINE=openrouter        # openai | mistral | claude | openrouter
+    export DRIVER_LLM_MODEL=openai/gpt-oss-120b
+    export DRIVER_LLM_API_KEY=sk-or-...        # the engine's key, NOT the dr_ credential
 """
 
 import os
@@ -26,7 +31,11 @@ def main() -> int:
     args = sys.argv[1:]
     zdr = "--zdr" in args
     prompt = " ".join(a for a in args if a != "--zdr") or "what is https://ycombinator.com about?"
-    driver = Driver()  # reads DRIVER_API_KEY / DRIVER_BASE_URL from env
+    driver = Driver(  # reads DRIVER_API_KEY / DRIVER_BASE_URL from env
+        engine=os.environ.get("DRIVER_LLM_ENGINE"),
+        model=os.environ.get("DRIVER_LLM_MODEL"),
+        engine_key=os.environ.get("DRIVER_LLM_API_KEY"),
+    )
     debug = bool(os.environ.get("DRIVER_DEBUG"))
 
     print(f"prompt: {prompt}{'  [zdr]' if zdr else ''}")

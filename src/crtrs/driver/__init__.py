@@ -70,6 +70,11 @@ class Driver:
     :param zdr: request zero data retention for every run by default; a per-call
         ``zdr`` argument overrides it. Needs the account entitlement — without it
         the server rejects the run with 403.
+    :param engine: LLM backend for the runs — ``openai`` | ``mistral`` |
+        ``claude`` | ``openrouter``. Left out, the cloud uses its default engine.
+    :param model: model id for the selected engine.
+    :param engine_key: bring-your-own key for the selected engine (NOT the
+        ``dr_…`` credential — that's ``api_key``).
     """
 
     def __init__(
@@ -79,6 +84,9 @@ class Driver:
         timeout: Optional[float] = None,
         tools: Optional[Sequence[Union[Tool, Dict[str, Any]]]] = None,
         zdr: Optional[bool] = None,
+        engine: Optional[str] = None,
+        model: Optional[str] = None,
+        engine_key: Optional[str] = None,
     ) -> None:
         key = api_key or os.environ.get("DRIVER_API_KEY")
         if not key:
@@ -91,6 +99,15 @@ class Driver:
         self.tools = list(tools or [])
         checked = _assert_zdr(zdr)
         self.zdr = False if checked is None else checked
+        self.engine = engine
+        self.model = model
+        self.engine_key = engine_key
+        # Choosing an engine requires bringing its key — the cloud rejects the
+        # run otherwise. Fail here, at construction, instead of on the first run.
+        if self.engine and not self.engine_key:
+            raise ValueError(
+                "Driver: engine requires engine_key"
+            )
 
     def stream(
         self,
@@ -119,6 +136,14 @@ class Driver:
         effective_zdr = self.zdr if checked is None else checked
         if effective_zdr:
             body["zdr"] = True
+        # Engine config from the constructor rides along with every run. Wire
+        # names match the Node client (camelCase).
+        if self.engine:
+            body["engine"] = self.engine
+        if self.model:
+            body["model"] = self.model
+        if self.engine_key:
+            body["engineKey"] = self.engine_key
         req = urllib.request.Request(
             self.base_url + RUN_PATH,
             data=json.dumps(body).encode("utf-8"),
